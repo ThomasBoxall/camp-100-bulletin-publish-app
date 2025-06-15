@@ -87,7 +87,8 @@ def setupCloudLogging(credentials_path: str, project_id: str):
         buffered_logs_string = log_buffer.getvalue()
         if buffered_logs_string:
             rootLoggingHandler.info("Flushing previously buffered logs to Google Cloud Logging (chronologically)...")
-            logger_cloud = client.logger(APPL_NAME) # Get a logger object for manual logging
+            logName = f"{APPL_NAME}{APPL_ENV}"
+            logger_cloud = client.logger(logName) # Get a logger object for manual logging
 
             for line in buffered_logs_string.splitlines():
                 if not line.strip():
@@ -125,7 +126,7 @@ def setupCloudLogging(credentials_path: str, project_id: str):
 
 
         # attach the CloudLoggingHandler for future logs
-        cloudLoggingHandler = CloudLoggingHandler(client=client)
+        cloudLoggingHandler = CloudLoggingHandler(client=client, name=logName)
         cloudLoggingFormat = logging.Formatter(f'{APPL_NAME} {APPL_ENV} %(asctime)s - %(levelname)s - %(message)s')
         cloudLoggingHandler.setFormatter(cloudLoggingFormat)
 
@@ -217,44 +218,102 @@ def main():
 
             wpPostContent = buildWPPostContent(values)
 
-            postToWP('test1', wpPostContent)
+            postToWP(generateWPPostTitle(), wpPostContent, generateWPPostSlug())
     
     except Exception as e:
         logging.error(f"Error consuming Google Sheet: {e}")
+
+def generateWPPostTitle():
+    # Generates post title based on current time. 
+    # rounds to the nearest half hour using roundToNearestHalfHour
+
+    currentDateTime = datetime.datetime.now()
+    formattedCurrentDateTime = roundToNearestHalfHour(currentDateTime).strftime("%H:%M, %A %d %B")
+
+    postTitle = f"Camp 100 Bulletin ({formattedCurrentDateTime})"
+
+    logging.info(f"generated post title: {postTitle}")
+
+    return postTitle
+
+def generateWPPostSlug():
+    # generates the posts slug based on the current time
+    # rounds to the nearest half hour using roundToNearestHalfHour
+
+    currentDateTime = datetime.datetime.now()
+    formattedCurrentDateTime = roundToNearestHalfHour(currentDateTime).strftime("%m-%d-%H-%M")
+
+    postSlug = f"bulletin-{formattedCurrentDateTime}"
+
+    logging.info(f"generated post slug: {postSlug}")
+
+    return postSlug
+
+def roundToNearestHalfHour(dt):
+    # Calculate the number of minutes past the hour
+    minutes = dt.minute
+
+    # Calculate target seconds (either 0 or 1800) based on which half of the hour we are in
+    if minutes < 15:  # Closer to 00
+        rounded_dt = dt.replace(minute=0, second=0, microsecond=0)
+    elif minutes >= 15 and minutes < 45: # Closer to 30
+        rounded_dt = dt.replace(minute=30, second=0, microsecond=0)
+    else:  # Closer to next 00 (next hour)
+        rounded_dt = (dt + datetime.timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+        
+    return rounded_dt
         
 def buildWPPostContent(responseContent):
     wpPost = "<p>Published at (time)</p>"
-    
+    validEntries = 0
     # delete the header from the spreadsheet
     del responseContent[0]
 
     for oneRecord in responseContent:
-        if oneRecord[0] == '1':
-            # to be included
-            oneRecordText = f"<h3>{oneRecord[1]}</h3><p>{oneRecord[2]}</p><p>From: {oneRecord[3]}</p>"
-            wpPost += oneRecordText
+        try:
+            if oneRecord[0] == '1':
+                # to be included
+                oneRecordText = f"<h3>{oneRecord[1]}</h3><p>{oneRecord[2]}</p><p>From: {oneRecord[3]}</p>"
+                wpPost += oneRecordText
+                validEntries += 1
+        except Exception as e:
+            logging.error(f"bad bulletin entry. content {oneRecord}. error: {e}")
     
+    logging.info(f"generated WP post body. {validEntries} posts included")
+
     logging.info(wpPost)
     return wpPost
 
-def postToWP(title, content):
-    wp_credentials = f"{WP_USERNAME}:{WP_APPLICATION_PASSWORD}"
-    wp_token = base64.b64encode(wp_credentials.encode()).decode('utf-8')
+def postToWP(title, content, slug):
+    try:
+        # build WP credentials 
+        wp_credentials = f"{WP_USERNAME}:{WP_APPLICATION_PASSWORD}"
+        wp_token = base64.b64encode(wp_credentials.encode()).decode('utf-8')
 
-    wp_headers = {
-        'Authorization': f'Basic {wp_token}',
-        'Content-Type': 'application/json'
-    }
+        wp_headers = {
+            'Authorization': f'Basic {wp_token}',
+            'Content-Type': 'application/json'
+        }
 
-    api_url = f"{WP_SITE_URL}/wp-json/wp/v2/posts"
-    data = {
-    'title' : title,
-    'status': 'publish',
-    'slug' : f'example-post-{title}',
-    'content': content
-    }
-    response = requests.post(api_url,headers=wp_headers, json=data)
-    logging.info(response)
+        api_url = f"{WP_SITE_URL}/wp-json/wp/v2/posts"
+        data = {
+        'title' : title,
+        'status': 'publish',
+        'slug' : slug,
+        'content': content
+        }
+
+        # we have a post ready to go so make request to WordPress 
+
+        try:
+            response = requests.post(api_url,headers=wp_headers, json=data)
+            logging.info(f"published to wordpress with return code {response}")
+
+        except Exception as wpe:
+            logging.critical(f"failed to publish to wordpress. {wpe}")
+
+    except Exception as e:
+        logging.critical(f"failed to build WP service. {e}")
 
 if __name__ == "__main__":
   logging.info("--- APPLICAITON STARTUP ---")
