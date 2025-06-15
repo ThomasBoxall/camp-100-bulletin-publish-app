@@ -1,0 +1,17 @@
+google-sheets:
+  spreadsheet-id: 'google-sheets-spreadsheet-id'
+  spreadsheet-sheet-name: 'sheet-name'
+
+google-auth:
+  service-account-creds-path: './path-to-file.json'
+  service-account-project-id: 'project-id'
+  auth-scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly']
+
+wordpress:
+  username: 'wp-username'
+  application-password: 'wp-application-password'
+  site-url: 'wp-site-url-including-https'
+
+application:
+  name: 'nice-name-of-appl'
+  environment: 'ENV'

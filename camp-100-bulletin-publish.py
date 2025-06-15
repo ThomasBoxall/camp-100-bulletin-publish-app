@@ -161,19 +161,25 @@ def initialise():
             sys.exit()
     
     # we have found the file so crack on and read it
-    GS_SPREADSHEET_ID = configData['google-sheets']['spreadsheet-id']
-    GS_SPREADSHEET_SHEET_NAME = configData['google-sheets']['spreadsheet-sheet-name']
+    try:
+        GS_SPREADSHEET_ID = configData['google-sheets']['spreadsheet-id']
+        GS_SPREADSHEET_SHEET_NAME = configData['google-sheets']['spreadsheet-sheet-name']
 
-    GA_SERVICE_ACCOUNT_CREDS_PATH = configData['google-auth']['service-account-creds-path']
-    GA_SERVICE_ACCOUNT_PROJECT_ID = configData['google-auth']['service-account-project-id']
-    GA_SCOPES = configData['google-auth']['auth-scopes']
+        GA_SERVICE_ACCOUNT_CREDS_PATH = configData['google-auth']['service-account-creds-path']
+        GA_SERVICE_ACCOUNT_PROJECT_ID = configData['google-auth']['service-account-project-id']
+        GA_SCOPES = configData['google-auth']['auth-scopes']
 
-    WP_USERNAME = configData['wordpress']['username']
-    WP_APPLICATION_PASSWORD = configData['wordpress']['application-password']
-    WP_SITE_URL = configData['wordpress']['site-url']
+        WP_USERNAME = configData['wordpress']['username']
+        WP_APPLICATION_PASSWORD = configData['wordpress']['application-password']
+        WP_SITE_URL = configData['wordpress']['site-url']
 
-    APPL_NAME = configData['application']['name']
-    APPL_ENV = configData['application']['environment']
+        APPL_NAME = configData['application']['name']
+        APPL_ENV = configData['application']['environment']
+
+        logging.info("successfully parsed all config data")
+
+    except Exception as e:
+        logging.critical(f"parsing config data into global constants: {e}")
 
     logging.info("complete initialisation")
 
