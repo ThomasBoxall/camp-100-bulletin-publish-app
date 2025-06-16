@@ -29,8 +29,14 @@ WP_USERNAME = ""
 WP_APPLICATION_PASSWORD = ""
 WP_SITE_URL = ""
 
+DIS_GENERAL_NOTIF_WEBHOOK = ""
+DIS_ADMIN_NOTIF_WEBHOOK = ""
+
 APPL_NAME = ""
 APPL_ENV = ""
+
+# Initialise global variables
+numberOfEntriesInBulletin = 0
 
 # INITIALISE LOGGING
 
@@ -147,11 +153,13 @@ def setupCloudLogging(credentials_path: str, project_id: str):
 
 
 def initialise():
-    # initialise the program
+    """
+    Initialises the program: sets global variables
+    """
 
     logging.info("begin initialising")
 
-    global GS_SPREADSHEET_ID, GS_SPREADSHEET_SHEET_NAME, GA_SERVICE_ACCOUNT_CREDS_PATH, GA_SERVICE_ACCOUNT_PROJECT_ID, GA_SCOPES, WP_USERNAME, WP_APPLICATION_PASSWORD, WP_SITE_URL, APPL_ENV, APPL_NAME
+    global GS_SPREADSHEET_ID, GS_SPREADSHEET_SHEET_NAME, GA_SERVICE_ACCOUNT_CREDS_PATH, GA_SERVICE_ACCOUNT_PROJECT_ID, GA_SCOPES, WP_USERNAME, WP_APPLICATION_PASSWORD, DIS_GENERAL_NOTIF_WEBHOOK, DIS_ADMIN_NOTIF_WEBHOOK, WP_SITE_URL, APPL_ENV, APPL_NAME
 
     try:
         with open('config.yml', 'r') as configYml:
@@ -174,12 +182,16 @@ def initialise():
         WP_APPLICATION_PASSWORD = configData['wordpress']['application-password']
         WP_SITE_URL = configData['wordpress']['site-url']
 
+        DIS_GENERAL_NOTIF_WEBHOOK = configData['discord']['general-notif-webhook']
+        DIS_ADMIN_NOTIF_WEBHOOK = configData['discord']['admin-notif-webhook']
+
         APPL_NAME = configData['application']['name']
         APPL_ENV = configData['application']['environment']
 
         logging.info("successfully parsed all config data")
 
     except Exception as e:
+        postToDiscord('admin', f"🚨 **Critical Error**: Failed to parse config file with error {e}")
         logging.critical(f"parsing config data into global constants: {e}")
 
     logging.info("complete initialisation")
@@ -190,11 +202,16 @@ def main():
 
     logging.info("starting google credentials validation")
 
-    ga_creds = None
-    ga_creds = service_account.Credentials.from_service_account_file(
-                                filename=GA_SERVICE_ACCOUNT_CREDS_PATH, 
-                                scopes=GA_SCOPES)
-    
+    try:
+        ga_creds = None
+        ga_creds = service_account.Credentials.from_service_account_file(
+                                    filename=GA_SERVICE_ACCOUNT_CREDS_PATH, 
+                                    scopes=GA_SCOPES)
+
+    except Exception as e:
+        postToDiscord('admin' f'failed to build service account: {e}')
+        logging.critical(f"failed to build service account: {e}")
+
     logging.info("creds validated")
 
     logging.info("beginning sheet fetch")
@@ -205,27 +222,40 @@ def main():
         result = gs_service.spreadsheets().values().get(
             spreadsheetId=GS_SPREADSHEET_ID, range=GS_SPREADSHEET_SHEET_NAME).execute()
         values = result.get('values', [])
+    except Exception as e:
+        logging.critical(f"Error consuming Google Sheet: {e}")
 
-        if not values:
-            print('No data found in the spreadsheet.')
+    try:
+        if not values or len(values) == 1:
+            # if spreadsheet is completely entry or there is just the header row: something's gone wrong...
             logging.info("no data in spreadsheet")
-            return ('No data found.')
+            postToDiscord('general', f'🚨 **ERROR** No data found in Google Sheet. Bulletin not published.')
         else:
             print('Data from Google Sheet:')
             for row in values:
                 logging.debug(f"row: {row}")
             logging.info(f'Successfully read {len(values)} rows from Google Sheet')
 
+            wpPostTitle = generateWPPostTitle()
             wpPostContent = buildWPPostContent(values)
+            wpPostSlug = generateWPPostSlug()
 
-            postToWP(generateWPPostTitle(), wpPostContent, generateWPPostSlug())
+            if numberOfEntriesInBulletin == 0:
+                # no valid entires in the bulletin, so don't publish (ie nothing with flag set)
+                postToDiscord('general', f'🚨 **ERROR** No valid entries found in Google Sheet. Bulletin not published.')
+            else:
+                # valid bulletin as num entries >= 1
+                postToWP(wpPostTitle, wpPostContent, wpPostSlug)
+
+                
     
     except Exception as e:
-        logging.error(f"Error consuming Google Sheet: {e}")
+        logging.critical(f"error parsing spreadsheet response: {e}")
 
-def generateWPPostTitle():
-    # Generates post title based on current time. 
-    # rounds to the nearest half hour using roundToNearestHalfHour
+def generateWPPostTitle() -> str:
+    """
+    Generates suitable title for WordPress post based on the rounded current time
+    """
 
     currentDateTime = datetime.datetime.now()
     formattedCurrentDateTime = roundToNearestHalfHour(currentDateTime).strftime("%H:%M, %A %d %B")
@@ -236,12 +266,13 @@ def generateWPPostTitle():
 
     return postTitle
 
-def generateWPPostSlug():
-    # generates the posts slug based on the current time
-    # rounds to the nearest half hour using roundToNearestHalfHour
-
+def generateWPPostSlug() -> str:
+    """
+    Generates suitable slug for WordPress post based on the rounded current time
+    """
+    
     currentDateTime = datetime.datetime.now()
-    formattedCurrentDateTime = roundToNearestHalfHour(currentDateTime).strftime("%m-%d-%H-%M")
+    formattedCurrentDateTime = roundToNearestHalfHour(currentDateTime).strftime("%m%d-%H%M")
 
     postSlug = f"bulletin-{formattedCurrentDateTime}"
 
@@ -249,7 +280,11 @@ def generateWPPostSlug():
 
     return postSlug
 
-def roundToNearestHalfHour(dt):
+def roundToNearestHalfHour(dt: datetime.datetime) -> datetime.datetime:
+    """
+    Rounds the current time to the nearest half hour
+    """
+
     # Calculate the number of minutes past the hour
     minutes = dt.minute
 
@@ -263,8 +298,14 @@ def roundToNearestHalfHour(dt):
         
     return rounded_dt
         
-def buildWPPostContent(responseContent):
-    wpPost = "<p>Published at (time)</p>"
+def buildWPPostContent(responseContent: str) -> str:
+    """
+    Builds WordPress Post content based on provided `content`
+    """
+
+    global numberOfEntriesInBulletin
+
+    wpPost = f"<p>Published at {datetime.datetime.now()}</p>"
     validEntries = 0
     # delete the header from the spreadsheet
     del responseContent[0]
@@ -281,10 +322,16 @@ def buildWPPostContent(responseContent):
     
     logging.info(f"generated WP post body. {validEntries} posts included")
 
+    numberOfEntriesInBulletin = validEntries
+    
     logging.info(wpPost)
     return wpPost
 
-def postToWP(title, content, slug):
+def postToWP(title: str, content: str, slug: str):
+    """
+    Posts provided post to WordPress 
+    """
+
     try:
         # build WP credentials 
         wp_credentials = f"{WP_USERNAME}:{WP_APPLICATION_PASSWORD}"
@@ -298,22 +345,66 @@ def postToWP(title, content, slug):
         api_url = f"{WP_SITE_URL}/wp-json/wp/v2/posts"
         data = {
         'title' : title,
-        'status': 'publish',
+        'status' : 'publish',
         'slug' : slug,
-        'content': content
+        'content' : content
         }
 
         # we have a post ready to go so make request to WordPress 
 
         try:
             response = requests.post(api_url,headers=wp_headers, json=data)
-            logging.info(f"published to wordpress with return code {response}")
+            if response.status_code == 201:
+                # success
+                logging.info(f"published to wordpress with return code {response}")
+                postToDiscord('general', f'📣 **POSTED** New Bulletin posted containing {numberOfEntriesInBulletin} entries. {WP_SITE_URL}/{slug}')
+            else:
+                # error
+                logging.critical(f"failed to post to WordPress with return code: {response.status_code}")
+                postToDiscord('general', f'🚨 **ERROR** Failed to post to WordPress due to Technical Error. Bulletin not published')
+                postToDiscord('admin', f'Failed to post to WordPress with response {response}')
 
         except Exception as wpe:
+            postToDiscord('admin', f"failed to publish to WP: {wpe}")
             logging.critical(f"failed to publish to wordpress. {wpe}")
 
     except Exception as e:
+        postToDiscord('admin', f"failed to build WP service: {e}")
         logging.critical(f"failed to build WP service. {e}")
+
+def postToDiscord(mode: str, content: str):
+    """
+    Posts to Discord either in admin or general mode
+    """
+    postToUrl = ""
+    body = {}
+    
+    # match case block to set body
+    match mode:
+        case 'general':
+            postToUrl = DIS_GENERAL_NOTIF_WEBHOOK
+            body = {
+                "content": content,
+                "username": f"{APPL_NAME}-{APPL_ENV} Notifier"
+            }
+        case 'admin':
+            postToUrl = DIS_ADMIN_NOTIF_WEBHOOK
+            body = {
+                "content": content,
+                "username": f"{APPL_NAME}-{APPL_ENV} ADMIN Notifier"
+            }
+        case default:
+            logging.error(f"invalid mode passed to postToDiscord: {mode}")
+    
+    logging.info(f"constructed discord webhook post: {body}")
+    logging.info(f"discord webhook targeting: {postToUrl}")
+
+    try:
+        discordResult = requests.post(postToUrl, json=body)
+        logging.info(f"discord posted: {discordResult}")
+    except Exception as e:
+        logging.critical(f"returned error from discord: {e}")
+    
 
 if __name__ == "__main__":
   logging.info("--- APPLICAITON STARTUP ---")

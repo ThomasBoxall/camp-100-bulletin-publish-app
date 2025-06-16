@@ -12,6 +12,10 @@ wordpress:
   application-password: 'wp-application-password'
   site-url: 'wp-site-url-including-https'
 
+discord:
+  general-notif-webhook: 'webhook-for-general-notifications'
+  admin-notif-webhook: 'webhook-for-admin-notifications'
+
 application:
   name: 'nice-name-of-appl'
   environment: 'ENV'
