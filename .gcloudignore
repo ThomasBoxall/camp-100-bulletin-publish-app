@@ -1,0 +1,4 @@
+# To explicitly include a file that is in .gitignore:
+!config.yaml
+
+debug.py

@@ -4,6 +4,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from google.cloud import logging as cloud_logging
 from google.cloud.logging.handlers import CloudLoggingHandler
+import functions_framework
 
 
 import requests
@@ -14,6 +15,7 @@ import sys
 import io
 import re
 import datetime
+import json
 
 # DECLARE CONSTANTS
 
@@ -405,10 +407,13 @@ def postToDiscord(mode: str, content: str):
     except Exception as e:
         logging.critical(f"returned error from discord: {e}")
     
+@functions_framework.cloud_event
+def cloudHandler(launchContext):
+    logging.info(launchContext)
+    logging.info("--- APPLICAITON STARTUP ---")
+    initialise()
+    setupCloudLogging(GA_SERVICE_ACCOUNT_CREDS_PATH, GA_SERVICE_ACCOUNT_PROJECT_ID)
+    main()
+    logging.info("--- APPLICATION TERMINATION ---")
+    return ("complete", 200)
 
-if __name__ == "__main__":
-  logging.info("--- APPLICAITON STARTUP ---")
-  initialise()
-  setupCloudLogging(GA_SERVICE_ACCOUNT_CREDS_PATH, GA_SERVICE_ACCOUNT_PROJECT_ID)
-  main()
-  logging.info("--- APPLICATION TERMINATION ---")
