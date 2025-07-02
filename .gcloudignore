@@ -1,4 +1,5 @@
 # To explicitly include a file that is in .gitignore:
 !config.yaml
 
+# ignore local development things
 debug.py

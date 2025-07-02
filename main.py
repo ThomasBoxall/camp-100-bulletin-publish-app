@@ -312,11 +312,14 @@ def buildWPPostContent(responseContent: str) -> str:
     # delete the header from the spreadsheet
     del responseContent[0]
 
+    # sort the responses by their includeFlag so there is some control over which order they are included in
+    responseContent = sorted(responseContent, key=lambda x: x[0])
+
     for oneRecord in responseContent:
         try:
-            if oneRecord[0] == '1':
+            if oneRecord[0] in ['1', '2', '3']:
                 # to be included
-                oneRecordText = f"<h3>{oneRecord[1]}</h3><p>{oneRecord[2]}</p><p>From: {oneRecord[3]}</p>"
+                oneRecordText = f"<h3>{oneRecord[2]}</h3><p>{oneRecord[3]}</p><p>From: {oneRecord[4]}</p>"
                 wpPost += oneRecordText
                 validEntries += 1
         except Exception as e:
@@ -372,6 +375,7 @@ def postToWP(title: str, content: str, slug: str):
 
     except Exception as e:
         postToDiscord('admin', f"failed to build WP service: {e}")
+        postToDiscord('general', f"🚨 **ERROR** Failed to post to WordPress due to failing to construct WordPress Service. Bulletin Not Published")
         logging.critical(f"failed to build WP service. {e}")
 
 def postToDiscord(mode: str, content: str):
