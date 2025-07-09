@@ -3,7 +3,6 @@
 WIP.
 
 ## To do
-
 * better logging naming structure?
 
 
