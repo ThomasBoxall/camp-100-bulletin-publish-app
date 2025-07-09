@@ -168,7 +168,7 @@ def initialise():
             logging.info("opened config file")
             configData = yaml.safe_load(configYml)
     except FileNotFoundError as fnfError:
-            logging.error('file not found')
+            logging.critical('file not found')
             sys.exit()
     
     # we have found the file so crack on and read it
@@ -193,7 +193,8 @@ def initialise():
         logging.info("successfully parsed all config data")
 
     except Exception as e:
-        postToDiscord('admin', f"🚨 **Critical Error**: Failed to parse config file with error {e}")
+        postToDiscord('general', f"🚨 **Critical Error**: Failed to parse config file. Bulletin Not Published")
+        postToDiscord('admin', f"Failed to parse config file with error {e}")
         logging.critical(f"parsing config data into global constants: {e}")
 
     logging.info("complete initialisation")
@@ -211,35 +212,27 @@ def main():
                                     scopes=GA_SCOPES)
 
     except Exception as e:
+        postToDiscord('general' f'🚨 **Critical Error**: Failed to construct Service Account. Bulletin Not Published')
         postToDiscord('admin' f'failed to build service account: {e}')
         logging.critical(f"failed to build service account: {e}")
 
     logging.info("creds validated")
 
-    logging.info("beginning sheet fetch")
+    spreadsheetContents = fetchGoogleSheetsContents(ga_creds)
 
     try:
-        gs_service = build('sheets', 'v4', credentials=ga_creds)
-
-        result = gs_service.spreadsheets().values().get(
-            spreadsheetId=GS_SPREADSHEET_ID, range=GS_SPREADSHEET_SHEET_NAME).execute()
-        values = result.get('values', [])
-    except Exception as e:
-        logging.critical(f"Error consuming Google Sheet: {e}")
-
-    try:
-        if not values or len(values) == 1:
+        if not spreadsheetContents or len(spreadsheetContents) == 1:
             # if spreadsheet is completely entry or there is just the header row: something's gone wrong...
             logging.info("no data in spreadsheet")
             postToDiscord('general', f'🚨 **ERROR** No data found in Google Sheet. Bulletin not published.')
         else:
             print('Data from Google Sheet:')
-            for row in values:
+            for row in spreadsheetContents:
                 logging.debug(f"row: {row}")
-            logging.info(f'Successfully read {len(values)} rows from Google Sheet')
+            logging.info(f'Successfully read {len(spreadsheetContents)} rows from Google Sheet')
 
             wpPostTitle = generateWPPostTitle()
-            wpPostContent = buildWPPostContent(values)
+            wpPostContent = buildWPPostContent(spreadsheetContents)
             wpPostSlug = generateWPPostSlug()
 
             if numberOfEntriesInBulletin == 0:
@@ -249,10 +242,27 @@ def main():
                 # valid bulletin as num entries >= 1
                 postToWP(wpPostTitle, wpPostContent, wpPostSlug)
 
-                
-    
     except Exception as e:
         logging.critical(f"error parsing spreadsheet response: {e}")
+        postToDiscord('general' f'🚨 **Critical Error**: Failed to parse Google Sheet. Bulletin Not Published')
+        postToDiscord('admin' f'failed to parse google sheet: {e}')
+
+
+def fetchGoogleSheetsContents(ga_creds: service_account.Credentials) -> list:
+    logging.info("beginning sheet fetch")
+
+    try:
+        gs_service = build('sheets', 'v4', credentials=ga_creds)
+
+        result = gs_service.spreadsheets().values().get(
+            spreadsheetId=GS_SPREADSHEET_ID, range=GS_SPREADSHEET_SHEET_NAME).execute()
+        values = result.get('values', [])
+        return values
+    except Exception as e:
+        logging.critical(f"Error consuming Google Sheet: {e}")
+        postToDiscord('general' f'🚨 **Critical Error**: Failed to consume Google Sheet. Bulletin Not Published')
+        postToDiscord('admin' f'failed to consume google sheet: {e}')
+
 
 def generateWPPostTitle() -> str:
     """
@@ -268,6 +278,7 @@ def generateWPPostTitle() -> str:
 
     return postTitle
 
+
 def generateWPPostSlug() -> str:
     """
     Generates suitable slug for WordPress post based on the rounded current time
@@ -281,6 +292,7 @@ def generateWPPostSlug() -> str:
     logging.info(f"generated post slug: {postSlug}")
 
     return postSlug
+
 
 def roundToNearestHalfHour(dt: datetime.datetime) -> datetime.datetime:
     """
@@ -299,7 +311,8 @@ def roundToNearestHalfHour(dt: datetime.datetime) -> datetime.datetime:
         rounded_dt = (dt + datetime.timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
         
     return rounded_dt
-        
+
+
 def buildWPPostContent(responseContent: str) -> str:
     """
     Builds WordPress Post content based on provided `content`
@@ -307,7 +320,11 @@ def buildWPPostContent(responseContent: str) -> str:
 
     global numberOfEntriesInBulletin
 
-    wpPost = f"<p>Published at {datetime.datetime.now()}</p>"
+    wpEntryCardPreamble = '<div class="wp-block-group is-layout-constrained wp-container-core-group-is-layout-825b88d4 wp-block-group-is-layout-constrained" style="border-left-color:#f04c58;margin-top:var(--wp--preset--spacing--50);margin-bottom:var(--wp--preset--spacing--50);padding-top:var(--wp--preset--spacing--30);padding-right:var(--wp--preset--spacing--30);padding-bottom:var(--wp--preset--spacing--30);padding-left:var(--wp--preset--spacing--30);box-shadow:var(--wp--preset--shadow--natural)">'
+
+    wpEntryCardPostamble = '</div>'
+
+    wpPost = ""
     validEntries = 0
     # delete the header from the spreadsheet
     del responseContent[0]
@@ -319,11 +336,14 @@ def buildWPPostContent(responseContent: str) -> str:
         try:
             if oneRecord[0] in ['1', '2', '3']:
                 # to be included
-                oneRecordText = f"<h3>{oneRecord[2]}</h3><p>{oneRecord[3]}</p><p>From: {oneRecord[4]}</p>"
+                # line below is used to control what the structure of a single bulletin entry looks like.
+                oneRecordText = f"{wpEntryCardPreamble}<h3 class='wp-block-heading'>{oneRecord[6]}</h3><p>{oneRecord[7]}</p>{wpEntryCardPostamble}"
                 wpPost += oneRecordText
                 validEntries += 1
         except Exception as e:
             logging.error(f"bad bulletin entry. content {oneRecord}. error: {e}")
+    
+    wpPost += f"<p class='has-small-font-size'>Generated by <a href='https://github.com/ThomasBoxall/camp-100-bulletin-publish-app'>BulletinPublishApp</a> at {datetime.datetime.now()}</p>"
     
     logging.info(f"generated WP post body. {validEntries} posts included")
 
@@ -331,6 +351,7 @@ def buildWPPostContent(responseContent: str) -> str:
     
     logging.info(wpPost)
     return wpPost
+
 
 def postToWP(title: str, content: str, slug: str):
     """
@@ -378,6 +399,7 @@ def postToWP(title: str, content: str, slug: str):
         postToDiscord('general', f"🚨 **ERROR** Failed to post to WordPress due to failing to construct WordPress Service. Bulletin Not Published")
         logging.critical(f"failed to build WP service. {e}")
 
+
 def postToDiscord(mode: str, content: str):
     """
     Posts to Discord either in admin or general mode
@@ -411,6 +433,7 @@ def postToDiscord(mode: str, content: str):
     except Exception as e:
         logging.critical(f"returned error from discord: {e}")
     
+
 @functions_framework.cloud_event
 def cloudHandler(launchContext):
     logging.info(launchContext)
