@@ -33,6 +33,7 @@ WP_SITE_URL = ""
 
 DIS_GENERAL_NOTIF_WEBHOOK = ""
 DIS_ADMIN_NOTIF_WEBHOOK = ""
+DIS_PUBLIC_NOTIF_WEBHOOK = ""
 
 APPL_NAME = ""
 APPL_ENV = ""
@@ -161,7 +162,7 @@ def initialise():
 
     logging.info("begin initialising")
 
-    global GS_SPREADSHEET_ID, GS_SPREADSHEET_SHEET_NAME, GA_SERVICE_ACCOUNT_CREDS_PATH, GA_SERVICE_ACCOUNT_PROJECT_ID, GA_SCOPES, WP_USERNAME, WP_APPLICATION_PASSWORD, DIS_GENERAL_NOTIF_WEBHOOK, DIS_ADMIN_NOTIF_WEBHOOK, WP_SITE_URL, APPL_ENV, APPL_NAME
+    global GS_SPREADSHEET_ID, GS_SPREADSHEET_SHEET_NAME, GA_SERVICE_ACCOUNT_CREDS_PATH, GA_SERVICE_ACCOUNT_PROJECT_ID, GA_SCOPES, WP_USERNAME, WP_APPLICATION_PASSWORD, DIS_GENERAL_NOTIF_WEBHOOK, DIS_ADMIN_NOTIF_WEBHOOK, DIS_PUBLIC_NOTIF_WEBHOOK, WP_SITE_URL, APPL_ENV, APPL_NAME
 
     try:
         with open('config.yml', 'r') as configYml:
@@ -186,6 +187,7 @@ def initialise():
 
         DIS_GENERAL_NOTIF_WEBHOOK = configData['discord']['general-notif-webhook']
         DIS_ADMIN_NOTIF_WEBHOOK = configData['discord']['admin-notif-webhook']
+        DIS_PUBLIC_NOTIF_WEBHOOK = configData['discord']['public-notif-webhook']
 
         APPL_NAME = configData['application']['name']
         APPL_ENV = configData['application']['environment']
@@ -383,7 +385,7 @@ def postToWP(title: str, content: str, slug: str):
             if response.status_code == 201:
                 # success
                 logging.info(f"published to wordpress with return code {response}")
-                postToDiscord('general', f'📣 **POSTED** New Bulletin posted containing {numberOfEntriesInBulletin} entries. {WP_SITE_URL}/{slug}')
+                postToDiscord('public', f'📣 **POSTED** New Bulletin posted containing {numberOfEntriesInBulletin} entries. {WP_SITE_URL}/{slug}')
             else:
                 # error
                 logging.critical(f"failed to post to WordPress with return code: {response.status_code}")
@@ -420,6 +422,12 @@ def postToDiscord(mode: str, content: str):
             body = {
                 "content": content,
                 "username": f"{APPL_NAME}-{APPL_ENV} ADMIN Notifier"
+            }
+        case 'public':
+            postToUrl = DIS_PUBLIC_NOTIF_WEBHOOK
+            body = {
+                "content": content,
+                "username": f"{APPL_NAME}-{APPL_ENV} Notifier"
             }
         case default:
             logging.error(f"invalid mode passed to postToDiscord: {mode}")

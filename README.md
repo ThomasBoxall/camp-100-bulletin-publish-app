@@ -14,6 +14,11 @@ A reminder function also runs at 45-to the hour of publishing (i.e. 09:15 for th
 
 The two main scripts (BulletinPublishApp and BulletinNotificationApp) run as Google Cloud Run Services which have a Google Cloud Scheduler Job triggering them to run. Both scripts log to the Google Cloud Logs, albeit in a massively obtuse & daft way (but it's too much effort to change). They do quite a lot of logging, as they run headlessly and it's nice to have something to help debugging when they break. Both scripts require a `config.yml` file to run, an example for which is provided in both repositories.  
 
+### A quick aside on Discord Webhooks
+Discord webhooks are the primary way of getting messages out to the Keepers of the Bulletin & coordination team etc. There are three webhooks used:
+* **Admin** - used for admin notices. Things like error dumps, etc
+* **General** - used for slightly more general notices, but still not public to everyone. For example - failure to publish. Also used by BulletinNewEntryApp and by BulletinNotificationApp.
+* **Public** - used for announcing there's a new bulletin published. This could be the same as general if you didn't want to ping too many people all the time.
 
 ## Deployment Notes
 Setting up spreadsheet of responses
