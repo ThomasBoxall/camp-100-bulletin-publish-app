@@ -339,7 +339,7 @@ def buildWPPostContent(responseContent: str) -> str:
             if oneRecord[0] in ['1', '2', '3']:
                 # to be included
                 # line below is used to control what the structure of a single bulletin entry looks like.
-                oneRecordText = f"{wpEntryCardPreamble}<h3 class='wp-block-heading'>{oneRecord[6]}</h3><p>{oneRecord[7]}</p>{wpEntryCardPostamble}"
+                oneRecordText = f"{wpEntryCardPreamble}<h5 class='wp-block-heading'>{oneRecord[6]}</h5><p>{oneRecord[7]}</p>{wpEntryCardPostamble}"
                 wpPost += oneRecordText
                 validEntries += 1
         except Exception as e:
