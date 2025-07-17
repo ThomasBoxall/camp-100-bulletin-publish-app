@@ -39,3 +39,39 @@ Building New Google Cloud Environment
 * Open Google Cloud Run Console, add a Pub/Sub Trigger (Create new Topic, set the Region to europe-west2, give it a sensible name)
 * Open Cloud Scheduler, add a new Job - set the TZ to GMT UTC+1 (so this won't work in winter, but we camp in the summer) and set the Execution Type to Pub/Sub pointing at the topic created on in the Run Console earlier.
 * Force run the Cloud Scheduler Job to test End-To-End Functionality
+
+## Deployment Playbook
+This assumes you're deploying all three applications.
+
+* Setup 3x Discord Webhooks and associated channels etc, enter this info into the config file
+* Prepare the Google Form, associated spreadsheet & BulletinNewEntryApp
+    * Share the Spreadsheet with the Service Account
+    * Add the Spreadsheet's ID & Tab Name into the config file
+    * Add an additional first column to the spreadsheet before all the auto-filling form responses (which will be used for `IncludeFlag`)
+    * Configure the BulletinNewEntryApp through the associated AppsScript Project on the Google Form. Ensure the Discord Webhook, Discord Post-as Name & Triggers are set correctly
+* Test the functionality of the BulletinNewEntryApp by submitting the form
+* Prepare the WordPress Account with Application Password. Enter this information into the config file.
+* Complete any required WordPress Configurations
+    * Set the Default Post Category to 'Bulletin' (Settings > Writing)
+    * Disable comments by un-checking 'Default Post Settings' & 'Other Comment Settings' (Settings > Discussion)
+* Finalise the config file
+    * Set Environment name
+    * Set Application name
+* Test BulletinNotificationApp locally with the new config file (ensure app name is set correctly)
+    * Verify that:
+        * A post is made to the correct Discord channel containing the correct data pulled from the spreadsheet
+* Push BulletinNotificationApp to GCloud
+    * Craft new `gcloud run deploy` command and run this
+    * Configure the Pub/Sub Queue & Cloud Scheduler Job
+    * Test by force-running the Cloud Scheduler Job
+* Test BulletinPublishApp locally with the new config file (ensure app name is set correctly)
+    * Verify that:
+        * The post appears correctly in WordPress, with correct categories & no comments
+        * A post is made to the correct Discord channel
+* Push BulletinPublishApp to GCloud
+    * Craft new `gcloud run deploy` command and run this
+    * Configure Pub/Sub Queue & Cloud Scheduler job
+    * Test by force-running the Cloud Scheduler Job
+* Confirm that the log entries are being populated correctly
+
+If needed (i.e. activation of the new environment isn't needed yet) - then 'Pause' the two relevant Cloud Scheduler Jobs. 
